@@ -684,6 +684,47 @@ class DeltaTest(unittest.TestCase):
         self.assertEqual(doc._get_changed_fields(), ['list_field'])
         self.assertEqual(doc._delta(), ({}, {'list_field': 1}))
 
+    def test_complex_nesting_document_embedded_document(self):
+
+        class Macro(EmbeddedDocument):
+            value = DynamicField(default="UNDEFINED")
+
+        class Parameter(EmbeddedDocument):
+            macros = MapField(EmbeddedDocumentField(Macro))
+
+            def expand(self):
+                self.macros["test"] = Macro()
+
+        class Node(Document):
+            parameters = MapField(EmbeddedDocumentField(Parameter))
+
+            def expand(self):
+                self.flattened_parameter = {}
+                for parameter_name, parameter in self.parameters.iteritems():
+                    parameter.expand()
+
+        class System(Document):
+            name = StringField(required=True)
+            nodes = MapField(ReferenceField(Node, dbref=False))
+
+            def save(self, call=False, *args, **kwargs):
+                for node_name, node in self.nodes.iteritems():
+                    node.expand()
+                    node.save(*args, **kwargs)
+                super(System, self).save(*args, **kwargs)
+
+        system = System(name="system")
+        system.save()
+        system.nodes["node"] = Node()
+        system.save()
+        system.nodes["node"].parameters["param"] = Parameter()
+        system.nodes["node"].expand()
+        system.nodes["node"].save()
+        updates, removals = system._delta()
+        self.assertEquals(updates, {})
+        self.assertEquals(removals, {})
+
+
 
 if __name__ == '__main__':
     unittest.main()

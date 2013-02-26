@@ -5,6 +5,7 @@ from functools import partial
 import pymongo
 from bson import json_util
 from bson.dbref import DBRef
+from bson.objectid import ObjectId
 
 from mongoengine import signals
 from mongoengine.common import _import_class
@@ -414,16 +415,19 @@ class BaseDocument(object):
                 parts = path.split('.')
                 d = doc
                 new_path = []
+                insert = True
                 for p in parts:
-                    if isinstance(d, DBRef):
+                    if isinstance(d, (DBRef, ObjectId)):
+                        insert = False
                         break
                     elif p.isdigit():
                         d = d[int(p)]
                     elif hasattr(d, 'get'):
                         d = d.get(p)
                     new_path.append(p)
-                path = '.'.join(new_path)
-                set_data[path] = d
+                if insert:
+                    path = '.'.join(new_path)
+                    set_data[path] = d
         else:
             set_data = doc
             if '_id' in set_data:
